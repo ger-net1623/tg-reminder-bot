@@ -1,17 +1,30 @@
-"""Reminder Bot — Telegram-бот для напоминаний.
+"""Reminder Bot — entry point.
 
-Phase 1: минимальный hello-world. Отвечает на /start и /help.
+Минимальный модуль, отвечающий только за:
+- загрузку конфига (.env),
+- инициализацию БД,
+- создание Bot/Dispatcher с MemoryStorage для FSM,
+- регистрацию роутера с хендлерами,
+- запуск polling.
+
+Вся логика команд — в ``handlers.py``. Слой данных — в ``db.py``.
+Парсинг времени — в ``time_parser.py``.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import os
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env
+from db import init_db
+from handlers import router
+from scheduler import run_scheduler
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -21,47 +34,35 @@ if not BOT_TOKEN:
         "BOT_TOKEN=твой_токен"
     )
 
-# Логи: видим в консоли, что происходит
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message) -> None:
-    """Приветственное сообщение при старте."""
-    await message.answer(
-        "Привет! Я бот-напоминалка.\n\n"
-        "Скоро я научусь принимать твои напоминания и присылать их "
-        "в нужное время.\n\n"
-        "Команды:\n"
-        "/help — справка"
-    )
-    logger.info("User %s sent /start", message.from_user.id)
-
-
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message) -> None:
-    """Справка по боту."""
-    await message.answer(
-        "Я умею (пока на этапе разработки):\n"
-        "/start — начать работу\n"
-        "/help — эта справка\n\n"
-        "Скоро добавлю:\n"
-        "/add — создать напоминание\n"
-        "/list — список напоминаний\n"
-        "/delete — удалить напоминание"
-    )
-
 
 async def main() -> None:
+    await init_db()
+
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(router)
+
+    # Запускаем планировщик параллельно с polling'ом.
+    scheduler_task = asyncio.create_task(run_scheduler(bot))
+
     logger.info("Bot is starting...")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        # Корректное завершение: останавливаем планировщик, закрываем сессию.
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+        await bot.session.close()
+        logger.info("Bot shutdown complete")
 
 
 if __name__ == "__main__":
