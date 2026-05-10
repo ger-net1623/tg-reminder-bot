@@ -16,6 +16,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -25,7 +27,7 @@ from db import init_db
 from handlers import router
 from scheduler import run_scheduler
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
@@ -34,10 +36,30 @@ if not BOT_TOKEN:
         "BOT_TOKEN=твой_токен"
     )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
+
+def _setup_logging() -> None:
+    """Логи пишем и в stderr (для дев-режима), и в файл с ротацией.
+
+    Файл нужен для autostart-режима (pythonw.exe, без консоли).
+    Ротация: 5 файлов по 1 МБ — больше нам не нужно.
+    """
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    stream = logging.StreamHandler()
+    stream.setFormatter(fmt)
+    root.addHandler(stream)
+
+    log_path = Path(__file__).parent / "bot.log"
+    file_handler = RotatingFileHandler(
+        log_path, maxBytes=1_000_000, backupCount=5, encoding="utf-8"
+    )
+    file_handler.setFormatter(fmt)
+    root.addHandler(file_handler)
+
+
+_setup_logging()
 logger = logging.getLogger(__name__)
 
 

@@ -29,7 +29,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path("data") / "reminders.db"
+DB_PATH = Path(__file__).parent / "data" / "reminders.db"
 
 STATUS_PENDING = "pending"
 STATUS_SENT = "sent"
