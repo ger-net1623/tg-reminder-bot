@@ -10,6 +10,7 @@ FSM (finite state machine) используется для пошагового 
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 
 from aiogram import Router
@@ -23,6 +24,53 @@ from time_parser import format_for_user, parse_user_time
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _build_about_text() -> str:
+    """Собрать текст команды /about из переменных окружения.
+
+    Любая ссылка/имя, которое не заполнено в .env, просто пропускается.
+    Это позволяет публиковать код без своих ссылок и переиспользовать
+    бота как шаблон.
+    """
+    name = os.getenv("AUTHOR_NAME", "").strip()
+    contact = os.getenv("AUTHOR_CONTACT", "").strip()
+    kwork = os.getenv("KWORK_URL", "").strip()
+    brand = os.getenv("BRAND_CHANNEL", "").strip()
+    github = os.getenv("GITHUB_URL", "").strip()
+
+    lines: list[str] = ["<b>О боте</b>", ""]
+    lines.append(
+        "Бот-напоминалка на Python (aiogram 3, SQLite). Принимает время "
+        "в естественном языке («завтра в 19:00», «через 30 минут»), "
+        "хранит и присылает в нужный момент."
+    )
+    lines.append("")
+
+    author_section: list[str] = []
+    if name:
+        author_section.append(f"Автор: <b>{name}</b>")
+    if contact:
+        author_section.append(f"Связь: {contact}")
+    if author_section:
+        lines.extend(author_section)
+        lines.append("")
+
+    services_section: list[str] = []
+    if kwork:
+        services_section.append(f"🛠 Заказать похожего бота: {kwork}")
+    if brand:
+        services_section.append(f"📣 Канал с кейсами: {brand}")
+    if github:
+        services_section.append(f"💻 Исходники этого бота: {github}")
+    if services_section:
+        lines.extend(services_section)
+
+    if len(lines) <= 3:
+        # Никаких ссылок не настроено — добавим хотя бы намёк, что бот open-source.
+        lines.append("Open-source. Чтобы добавить свои ссылки — заполни .env.")
+
+    return "\n".join(lines)
 
 
 class AddReminder(StatesGroup):
@@ -49,10 +97,20 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         "/list — список активных\n"
         "/delete — удалить по номеру\n"
         "/help — справка\n"
+        "/about — об авторе и заказе похожего бота\n"
         "/cancel — отменить текущий ввод",
-        parse_mode="HTML",
     )
     logger.info("User %s sent /start", message.from_user.id)
+
+
+@router.message(Command("about"))
+async def cmd_about(message: Message, state: FSMContext) -> None:
+    """Информация об авторе бота и где заказать похожий."""
+    await state.clear()
+    # Собираем текст лениво: .env загружается в bot.py до polling, но после
+    # импорта этого модуля. Поэтому генерим строку при каждом /about — это
+    # дёшево и заодно даёт перечитывание ENV без рестарта (если потребуется).
+    await message.answer(_build_about_text(), disable_web_page_preview=True)
 
 
 @router.message(Command("help"))
@@ -64,6 +122,7 @@ async def cmd_help(message: Message, state: FSMContext) -> None:
         "/add — создать напоминание (пошаговый диалог)\n"
         "/list — список твоих активных напоминаний\n"
         "/delete <code>N</code> — удалить напоминание по номеру (например <code>/delete 3</code>)\n"
+        "/about — об авторе и заказе похожего бота\n"
         "/help — эта справка\n"
         "/cancel — отменить текущий ввод\n\n"
         "<b>Форматы времени, которые я понимаю:</b>\n"
@@ -73,7 +132,6 @@ async def cmd_help(message: Message, state: FSMContext) -> None:
         "• <code>11.05 19:00</code> / <code>11.05.2026 19:00</code>\n"
         "• <code>в пятницу в 18:00</code>\n\n"
         "Все времена — по Москве (UTC+3).",
-        parse_mode="HTML",
     )
 
 
@@ -105,7 +163,6 @@ async def cmd_add(message: Message, state: FSMContext) -> None:
         "• <code>через 30 минут</code>\n"
         "• <code>11.05 в 20:30</code>\n\n"
         "Чтобы прервать — /cancel",
-        parse_mode="HTML",
     )
 
 
@@ -123,7 +180,6 @@ async def process_time(message: Message, state: FSMContext) -> None:
             "Попробуй ещё раз, например: <code>завтра в 19:00</code> или "
             "<code>через 1 час</code>.\n\n"
             "Прервать — /cancel",
-            parse_mode="HTML",
         )
         return
 
@@ -132,7 +188,6 @@ async def process_time(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"⏰ Понял: <b>{format_for_user(fire_at)}</b>\n\n"
         "<b>О чём напомнить?</b> (просто напиши текст)",
-        parse_mode="HTML",
     )
 
 
@@ -169,7 +224,6 @@ async def process_text(message: Message, state: FSMContext) -> None:
         f"✅ Готово! Напоминание #{reminder_id} сохранено.\n\n"
         f"⏰ Когда: <b>{format_for_user(fire_at)}</b>\n"
         f"📝 Текст: <i>{text}</i>",
-        parse_mode="HTML",
     )
     logger.info(
         "User %s created reminder #%s for %s",
@@ -206,7 +260,7 @@ async def cmd_list(message: Message, state: FSMContext) -> None:
         )
     lines.append("")
     lines.append("Удалить: <code>/delete N</code> (например <code>/delete 3</code>)")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await message.answer("\n".join(lines))
 
 
 @router.message(Command("delete"))
@@ -222,7 +276,6 @@ async def cmd_delete(
         await message.answer(
             "Укажи номер напоминания. Например: <code>/delete 3</code>\n\n"
             "Посмотреть номера: /list",
-            parse_mode="HTML",
         )
         return
 
@@ -232,7 +285,6 @@ async def cmd_delete(
     except ValueError:
         await message.answer(
             f"<code>{arg}</code> — это не номер. Нужно число, например <code>/delete 3</code>.",
-            parse_mode="HTML",
         )
         return
 
@@ -241,7 +293,7 @@ async def cmd_delete(
         user_id=message.from_user.id,
     )
     if deleted:
-        await message.answer(f"🗑 Напоминание <b>#{reminder_id}</b> удалено.", parse_mode="HTML")
+        await message.answer(f"🗑 Напоминание <b>#{reminder_id}</b> удалено.")
         logger.info(
             "User %s deleted reminder #%s",
             message.from_user.id, reminder_id,
@@ -250,5 +302,4 @@ async def cmd_delete(
         await message.answer(
             f"Напоминание <b>#{reminder_id}</b> не найдено или уже отправлено/удалено.\n\n"
             "Список активных: /list",
-            parse_mode="HTML",
         )

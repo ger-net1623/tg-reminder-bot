@@ -44,7 +44,7 @@ async def _send_reminder(bot: Bot, reminder: dict) -> None:
         f"<i>Запланировано на {format_for_user(fire_at)}</i>"
     )
     try:
-        await bot.send_message(chat_id, body, parse_mode="HTML")
+        await bot.send_message(chat_id, body)
         logger.info("Sent reminder #%s to chat %s", reminder["id"], chat_id)
     except TelegramAPIError as exc:
         # Юзер мог заблокировать бота / удалить чат / и т.п.

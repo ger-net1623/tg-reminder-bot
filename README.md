@@ -24,6 +24,7 @@ Telegram-бот на Python для постановки и отправки на
 | `/add`      | Создать напоминание (пошаговый диалог)            |
 | `/list`     | Показать активные напоминания                     |
 | `/delete N` | Удалить напоминание с номером N (например `/delete 3`) |
+| `/about`    | Об авторе и где заказать похожего бота            |
 | `/cancel`   | Прервать текущий диалог                           |
 
 ## Установка и запуск
@@ -45,6 +46,14 @@ pip install -r requirements.txt
 
 ```env
 BOT_TOKEN=your_telegram_bot_token_from_botfather
+
+# Опционально — все ссылки в команде /about. Любая пустая переменная
+# просто не показывается в /about, бот корректно работает без них.
+AUTHOR_NAME=
+AUTHOR_CONTACT=
+KWORK_URL=
+BRAND_CHANNEL=
+GITHUB_URL=
 ```
 
 Запуск:
